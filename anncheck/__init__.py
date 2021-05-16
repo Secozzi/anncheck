@@ -8,56 +8,140 @@ import time
 import os
 import re
 
+
 init()
 
-
-VARIABLE_RE = re.compile(r"\s*([*a-zA-Z_0-9]+)\s*[=,]*")
+VARIABLE_RE = re.compile(r"""
+    \s*                    # Whitespace
+    (\*{0,2}[a-zA-Z_0-9]+) # Valid characters for variable name, group is full name of variable
+    \s*                    # Whitespace
+    [=,]*                  # Variables are seperated by either = or ,
+""", re.VERBOSE)
 # Regex to match variable name
 # Group 0 - Full match
 # Group 1 - Variable name
 
-FUNC_INFO_RE = re.compile(r"\((.*)\)(?: *)( ?-> ?[^:]+)?:", re.DOTALL)
+FUNC_INFO_RE = re.compile(r"""
+    \(          # Opening parentheses of function defenition
+        (.*)    # Variables etc.
+    \)          # Closing parentheses of function defenition
+    (           # Open capture group for return annotation
+        [ ]?    # Optional space before arrow
+        ->      # Arrow denoting return annotation
+        [ ]?    # Optional space after arrow
+        [^:]+   # The return annotation
+                # 
+    )?:         # Close return annotation group, also
+                # make it optional and add colon to indicate
+                # the end of function definition.
+""", flags=re.DOTALL | re.VERBOSE)
 # Regex to match variables and return annotation
+# from first parenthesis after function name until colon
 # Group 0 - Full match
 # Group 1 - Variables
 # Group 2 - Return annotation (if any)
 
-FIND_FUNC_DEF_RE = re.compile(r"^(?:[ \t]|(?:async))*def ([a-zA-Z_0-9]+)\(", re.MULTILINE)
+FIND_FUNC_DEF_RE = re.compile(r"""
+    ^                   # Start of line to not match `def` keyword insides string etc
+    (?:                 # Open capture group for characters before `def`
+        [ \t]           # Valid characters before `def` is spaces and tabs
+        |               # or
+        (?:             # Open capture group for `async` keyword
+            async       # `async` can be before `def`
+        )               
+    )*                  # Close capture group for chars before `def`
+    def                 # the `def` keyword
+    (                   # Open capture group for function name
+        [a-zA-Z_0-9]+   # Valid function name characters
+    )
+    \(                  # First parentheses of function definition
+""", flags=re.MULTILINE | re.VERBOSE)
 # Regex to find a function definition
 # Group 0 - Full match
 # Group 1 - Function name
 
-TRIPLE_Q_RE = re.compile(r"(?:\n*[\t ]*)\"{3}(.*?)\"{3}", flags=re.DOTALL)
+TRIPLE_Q_RE = re.compile(r"""
+    \"{3}   # Opening triple quotes
+    (.*?)   # everything inside multiline comment
+    \"{3}   # Closing triple quotes
+""", flags=re.DOTALL | re.VERBOSE)
 # Regex for matching anything inside triple quotation marks (")
 # Group 0 - Full match
 # Group 1 - Text inside comment
 
-TRIPLE_A_RE = re.compile(r"(?:\n*[\t ]*)\'{3}(.*?)\'{3}", flags=re.DOTALL)
+TRIPLE_A_RE = re.compile(r"""
+    \'{3}   # Opening triple apostrophes
+    (.*?)   # everything inside multiline comment
+    \'{3}   # Closing triple apostrophes
+""", flags=re.DOTALL | re.VERBOSE)
 # Regex for matching anything inside triple apostrophes (')
 # Group 0 - Full match
 # Group 1 - Text inside comment
 
-COMMENT_RE = re.compile(
-    r"([\"'][^\"'\\\n]+(?:\\.[^\"'\\\n]*)*[\"'])|#.*?$", flags=re.MULTILINE
-)
+COMMENT_RE_Q = re.compile(r"""
+    (?s)              # the dot matches newlines too
+    (                 # open the capture group 1
+        "             # "
+        [^"\\]*       # all characters except a quote or a backslash
+                      # zero or more times
+        (?:           # open a non-capturing group
+            \\.       # a backslash and any character
+            [^"\\]*   # 
+        )*            # repeat zero or more times
+        "             # "
+    )                 # close the capture group 1
+    
+    |                 # OR
+    
+    #[^\n]*           # a sharp and zero or one characters that are not a newline.
+""", flags=re.VERBOSE | re.MULTILINE)
 # Regex for everything after "#" until line end
 # Group 0 - Full match
 # Group 1 - Empty
 
-MAIN_RE = re.compile(
-    r"^(if +__name__ *== *('|\")__main__('|\") *:)", flags=re.MULTILINE
-)
+
+""" # This regex doesn't work in verbose mode for some odd reason
+(?s)              # the dot matches newlines too
+(                 # open the capture group 1
+    ["']          # " or '
+    [^"'\\]*      # all characters except a quote, backslash, or an apostrophe
+                  # zero or more times
+    (?:           # open a non-capturing group
+        \\.       # a backslash and any character
+        [^"'\\]*  # 
+    )*            # repeat zero or more times
+    ["']          # " or '
+)                 # close the capture group 1
+
+|                 # OR
+
+#[^\n]*           # a sharp and zero or one characters that are not a newline.
+"""
+COMMENT_RE_A = re.compile(r"(?s)([\"'][^\"'\\]*(?:\\.[^\"'\\]*)*[\"'])|#[^\n]*", flags=re.MULTILINE)
+# Regex for everything after "#" until line end
+# Group 0 - Full match
+# Group 1 - Empty
+
+MAIN_RE = re.compile(r"""
+    ^(              # Line must start with whole match
+        if +        # `if` and optional space
+        __name__    # Match string
+        [ ]*==[ ]*  # Comparison with optional space around it
+        ['"]        # Match either quote or apostrophe
+        __main__    # Match string
+        ['"]        # Match either quote or apostrophe
+        [ ]*:       # Optional space after string and colon ending function defenition
+    )
+""", flags=re.MULTILINE | re.VERBOSE)
 # Regex for matching line containing if __name__ == '__main__'
 # Group 0 - Full match
 # Group 1 - Whole line
-# Group 2 - Quote/apostrophe 1
-# Group 3 - Quote/apostrophe 2
 
 
 def _split_vars(input_str: str) -> list:
     """Split variables into a list.
 
-    This function ensures it splits varaibles based on commas not inside
+    This function ensures it splits variables based on commas not inside
     default values or annotations but those between variables only. Brackets,
     commas, and parentheses inside strings will not count.
     """
@@ -93,8 +177,8 @@ def _split_vars(input_str: str) -> list:
 
 
 def _get_function_def(start: int, input_string: str) -> str:
-    """Get index on first parentheses from function defenition
-    and return the string of the whole function defenition.
+    """Get index on first parentheses from function definition
+    and return the string of the whole function definition.
     """
     i = start
     paren_count = 0
@@ -156,9 +240,9 @@ def _has_annotation(var: str) -> bool:
     can't have annotations.
 
     :param var: str
-        String containing varaible name, annotations, and default value
+        String containing variable name, annotations, and default value
     :return: bool
-        Returns wheter or not the variable has an annotation
+        Returns whether or not the variable has an annotation
     """
     if var.strip() == "self" or var.strip() == "cls":
         return True
@@ -197,7 +281,8 @@ def _get_file_info(path: str, **options: ty.Dict[str, ty.Union[str, bool]]) -> l
     if not options["include_docstrings"]:
         _file_text = TRIPLE_Q_RE.sub(_doc, _file_text)
         _file_text = TRIPLE_A_RE.sub(_doc, _file_text)
-    _file_text = COMMENT_RE.sub("", _file_text)
+    _file_text = COMMENT_RE_Q.sub("", _file_text)
+    _file_text = COMMENT_RE_A.sub("", _file_text)
 
     if options["match_function"]:
         match_func = re.compile(options["match_function"])
