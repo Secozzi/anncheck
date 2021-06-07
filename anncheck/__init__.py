@@ -48,9 +48,9 @@ FIND_FUNC_DEF_RE = re.compile(r"""
         |               # or
         (?:             # Open capture group for `async` keyword
             async       # `async` can be before `def`
-        )               
+        )               #
     )*                  # Close capture group for chars before `def`
-    def                 # the `def` keyword
+      def[ ]            # the `def` keyword
     (                   # Open capture group for function name
         [a-zA-Z_0-9]+   # Valid function name characters
     )
@@ -78,28 +78,6 @@ TRIPLE_A_RE = re.compile(r"""
 # Group 0 - Full match
 # Group 1 - Text inside comment
 
-COMMENT_RE_Q = re.compile(r"""
-    (?s)              # the dot matches newlines too
-    (                 # open the capture group 1
-        "             # "
-        [^"\\]*       # all characters except a quote or a backslash
-                      # zero or more times
-        (?:           # open a non-capturing group
-            \\.       # a backslash and any character
-            [^"\\]*   # 
-        )*            # repeat zero or more times
-        "             # "
-    )                 # close the capture group 1
-    
-    |                 # OR
-    
-    #[^\n]*           # a sharp and zero or one characters that are not a newline.
-""", flags=re.VERBOSE | re.MULTILINE)
-# Regex for everything after "#" until line end
-# Group 0 - Full match
-# Group 1 - Empty
-
-
 """ # This regex doesn't work in verbose mode for some odd reason
 (?s)              # the dot matches newlines too
 (                 # open the capture group 1
@@ -117,7 +95,7 @@ COMMENT_RE_Q = re.compile(r"""
 
 #[^\n]*           # a sharp and zero or one characters that are not a newline.
 """
-COMMENT_RE_A = re.compile(r"(?s)([\"'][^\"'\\]*(?:\\.[^\"'\\]*)*[\"'])|#[^\n]*", flags=re.MULTILINE)
+COMMENT_RE = re.compile(r"(?s)([\"'][^\"'\\]*(?:\\.[^\"'\\]*)*[\"'])|#[^\n]*", flags=re.MULTILINE)
 # Regex for everything after "#" until line end
 # Group 0 - Full match
 # Group 1 - Empty
@@ -170,7 +148,7 @@ def _split_vars(input_str: str) -> list:
             elif char == "]":
                 bracket_count -= 1
 
-    _last_var = input_str[last_read : len(input_str)]
+    _last_var = input_str[last_read: len(input_str)]
     if _last_var:
         output.append(_last_var)
     return output
@@ -188,7 +166,7 @@ def _get_function_def(start: int, input_string: str) -> str:
         if input_string[i] == ")":
             paren_count -= 1
         if input_string[i] == ":" and paren_count == 0:
-            return input_string[start : i + 1]
+            return input_string[start: i + 1]
         i += 1
     return ""
 
@@ -281,8 +259,7 @@ def _get_file_info(path: str, **options: ty.Dict[str, ty.Union[str, bool]]) -> l
     if not options["include_docstrings"]:
         _file_text = TRIPLE_Q_RE.sub(_doc, _file_text)
         _file_text = TRIPLE_A_RE.sub(_doc, _file_text)
-    _file_text = COMMENT_RE_Q.sub("", _file_text)
-    _file_text = COMMENT_RE_A.sub("", _file_text)
+    _file_text = COMMENT_RE.sub(lambda m: m.group(1) if m.group(1) else "", _file_text)
 
     if options["match_function"]:
         match_func = re.compile(options["match_function"])
@@ -481,7 +458,9 @@ def main(src: click.Path, **options: ty.Dict[str, ty.Union[str, bool]]) -> None:
 
                     if options["compact"]:
                         print(
-                            f"{fo.GREEN}{filename}{s.RESET_ALL}: Missing {fo.BLUE}{len(_output)}{s.RESET_ALL} annotations."
+                            f"{fo.GREEN}{filename}{s.RESET_ALL}:"
+                            f"Missing {fo.BLUE}{len(_output)}{s.RESET_ALL}"
+                            f"annotations."
                         )
                     else:
                         print(
@@ -498,7 +477,9 @@ def main(src: click.Path, **options: ty.Dict[str, ty.Union[str, bool]]) -> None:
 
                         if options["compact"]:
                             print(
-                                f"{fo.GREEN}{filename}{s.RESET_ALL}: Missing {fo.BLUE}{len(_output)}{s.RESET_ALL} annotations."
+                                f"{fo.GREEN}{filename}{s.RESET_ALL}:"
+                                f"Missing {fo.BLUE}{len(_output)}{s.RESET_ALL}"
+                                f"annotations."
                             )
                         else:
                             print(

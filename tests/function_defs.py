@@ -145,8 +145,8 @@ class A:
     @staticmethod
     def static(a, b) -> int: pass
 
-	def tabbed(self):
-		pass
+#	def tabbed(self):
+#		pass
 
     async def class_async(self):
         pass
