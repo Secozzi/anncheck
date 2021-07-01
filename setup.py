@@ -10,7 +10,7 @@ with open("requirements.txt") as f:
 
 setup(
     name="anncheck",
-    version="1.0.2",
+    version="1.2.0",
     description="A tool to find missing annotations in Python files.",
     long_description=readme,
     long_description_content_type="text/markdown",

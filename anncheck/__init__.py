@@ -11,37 +11,44 @@ import re
 
 init()
 
-VARIABLE_RE = re.compile(r"""
+r"""
+    (?:                    # Start non-capturing group for optional comments that appear
+        #.*\n              # Match the comment and the newline
+    )?                     # End non-capturing group and make it optional
     \s*                    # Whitespace
     (\*{0,2}[a-zA-Z_0-9]+) # Valid characters for variable name, group is full name of variable
     \s*                    # Whitespace
     [=,]*                  # Variables are seperated by either = or ,
-""", re.VERBOSE)
+"""
+VARIABLE_RE = re.compile(r"(?:#.*\n)?\s*([*a-zA-Z_0-9]+)\s*[=,]*")
 # Regex to match variable name
 # Group 0 - Full match
 # Group 1 - Variable name
 
-FUNC_INFO_RE = re.compile(r"""
+r"""
     \(          # Opening parentheses of function defenition
         (.*)    # Variables etc.
     \)          # Closing parentheses of function defenition
     (           # Open capture group for return annotation
-        [ ]?    # Optional space before arrow
+        [ ]*    # Space before arrow
         ->      # Arrow denoting return annotation
-        [ ]?    # Optional space after arrow
+        [ ]*    # Space after arrow
         [^:]+   # The return annotation
                 # 
     )?:         # Close return annotation group, also
                 # make it optional and add colon to indicate
                 # the end of function definition.
-""", flags=re.DOTALL | re.VERBOSE)
+"""
+FUNC_INFO_RE = re.compile(
+    r"\((.*)\)( *-> *[^:]+)?:", re.DOTALL
+)
 # Regex to match variables and return annotation
 # from first parenthesis after function name until colon
 # Group 0 - Full match
 # Group 1 - Variables
 # Group 2 - Return annotation (if any)
 
-FIND_FUNC_DEF_RE = re.compile(r"""
+r"""
     ^                   # Start of line to not match `def` keyword insides string etc
     (?:                 # Open capture group for characters before `def`
         [ \t]           # Valid characters before `def` is spaces and tabs
@@ -55,52 +62,39 @@ FIND_FUNC_DEF_RE = re.compile(r"""
         [a-zA-Z_0-9]+   # Valid function name characters
     )
     \(                  # First parentheses of function definition
-""", flags=re.MULTILINE | re.VERBOSE)
+"""
+FIND_FUNC_DEF_RE = re.compile(
+    r"^(?:[ \t]|(?:async))*def ([a-zA-Z_0-9]+)\(", re.MULTILINE
+)
 # Regex to find a function definition
 # Group 0 - Full match
 # Group 1 - Function name
 
-TRIPLE_Q_RE = re.compile(r"""
+r"""
     \"{3}   # Opening triple quotes
     (.*?)   # everything inside multiline comment
     \"{3}   # Closing triple quotes
-""", flags=re.DOTALL | re.VERBOSE)
+"""
+TRIPLE_Q_RE = re.compile(
+    r"\"{3}(.*?)\"{3}", re.DOTALL
+)
 # Regex for matching anything inside triple quotation marks (")
 # Group 0 - Full match
 # Group 1 - Text inside comment
 
-TRIPLE_A_RE = re.compile(r"""
+r"""
     \'{3}   # Opening triple apostrophes
     (.*?)   # everything inside multiline comment
     \'{3}   # Closing triple apostrophes
-""", flags=re.DOTALL | re.VERBOSE)
+"""
+TRIPLE_A_RE = re.compile(
+    r"\'{3}(.*?)\'{3}", re.DOTALL
+)
 # Regex for matching anything inside triple apostrophes (')
 # Group 0 - Full match
 # Group 1 - Text inside comment
 
-""" # This regex doesn't work in verbose mode for some odd reason
-(?s)              # the dot matches newlines too
-(                 # open the capture group 1
-    ["']          # " or '
-    [^"'\\]*      # all characters except a quote, backslash, or an apostrophe
-                  # zero or more times
-    (?:           # open a non-capturing group
-        \\.       # a backslash and any character
-        [^"'\\]*  # 
-    )*            # repeat zero or more times
-    ["']          # " or '
-)                 # close the capture group 1
-
-|                 # OR
-
-#[^\n]*           # a sharp and zero or one characters that are not a newline.
-"""
-COMMENT_RE = re.compile(r"(?s)([\"'][^\"'\\]*(?:\\.[^\"'\\]*)*[\"'])|#[^\n]*", flags=re.MULTILINE)
-# Regex for everything after "#" until line end
-# Group 0 - Full match
-# Group 1 - Empty
-
-MAIN_RE = re.compile(r"""
+r"""
     ^(              # Line must start with whole match
         if +        # `if` and optional space
         __name__    # Match string
@@ -110,7 +104,10 @@ MAIN_RE = re.compile(r"""
         ['"]        # Match either quote or apostrophe
         [ ]*:       # Optional space after string and colon ending function defenition
     )
-""", flags=re.MULTILINE | re.VERBOSE)
+"""
+MAIN_RE = re.compile(
+    r"^(if +__name__ *== *('|\")__main__('|\") *:)", flags=re.MULTILINE
+)
 # Regex for matching line containing if __name__ == '__main__'
 # Group 0 - Full match
 # Group 1 - Whole line
@@ -227,7 +224,7 @@ def _has_annotation(var: str) -> bool:
     return ":" in var
 
 
-def _get_file_info(path: str, **options: ty.Dict[str, ty.Union[str, bool]]) -> list:
+def _get_file_info(path: str, **options: ty.Dict[ty.Any, ty.Union[str, bool]]) -> list:
     """Checks for annotations for each function in a file given its path.
 
     :param path: str
@@ -254,12 +251,10 @@ def _get_file_info(path: str, **options: ty.Dict[str, ty.Union[str, bool]]) -> l
     else:
         _main_line = None
 
-    # Remove everything inside triple quotes and comments and
-    # Remove comments
+    # Remove everything inside triple quotes
     if not options["include_docstrings"]:
         _file_text = TRIPLE_Q_RE.sub(_doc, _file_text)
         _file_text = TRIPLE_A_RE.sub(_doc, _file_text)
-    _file_text = COMMENT_RE.sub(lambda m: m.group(1) if m.group(1) else "", _file_text)
 
     if options["match_function"]:
         match_func = re.compile(options["match_function"])
@@ -460,7 +455,7 @@ def main(src: click.Path, **options: ty.Dict[str, ty.Union[str, bool]]) -> None:
                         print(
                             f"{fo.GREEN}{filename}{s.RESET_ALL}:"
                             f"Missing {fo.BLUE}{len(_output)}{s.RESET_ALL}"
-                            f"annotations."
+                            f" annotations."
                         )
                     else:
                         print(
@@ -479,7 +474,7 @@ def main(src: click.Path, **options: ty.Dict[str, ty.Union[str, bool]]) -> None:
                             print(
                                 f"{fo.GREEN}{filename}{s.RESET_ALL}:"
                                 f"Missing {fo.BLUE}{len(_output)}{s.RESET_ALL}"
-                                f"annotations."
+                                f" annotations."
                             )
                         else:
                             print(
@@ -490,9 +485,16 @@ def main(src: click.Path, **options: ty.Dict[str, ty.Union[str, bool]]) -> None:
     else:
         _output = _get_file_info(src[0], **options)
         if _output:
-            for f in _output:
-                count += 1
-                print(f)
+            if options["compact"]:
+                print(
+                    f"{fo.GREEN}{src[0]}{s.RESET_ALL}:"
+                    f"Missing {fo.BLUE}{len(_output)}{s.RESET_ALL}"
+                    f" annotations."
+                )
+            else:
+                for f in _output:
+                    count += 1
+                    print(f)
         else:
             print(f"The file '{src[0]}' aren't missing annotations")
 
