@@ -26,21 +26,21 @@ VARIABLE_RE = re.compile(r"(?:#.*\n)?\s*([*a-zA-Z_0-9]+)\s*[=,]*")
 # Group 1 - Variable name
 
 r"""
-    \(          # Opening parentheses of function defenition
+    \(          # Opening parentheses of function definition
         (.*)    # Variables etc.
-    \)          # Closing parentheses of function defenition
+    \)          # Closing parentheses of function definition
     (           # Open capture group for return annotation
         [ ]*    # Space before arrow
         ->      # Arrow denoting return annotation
         [ ]*    # Space after arrow
         [^:]+   # The return annotation
                 # 
-    )?:         # Close return annotation group, also
+    )? ?:       # Close return annotation group, also
                 # make it optional and add colon to indicate
                 # the end of function definition.
 """
 FUNC_INFO_RE = re.compile(
-    r"\((.*)\)( *-> *[^:]+)?:", re.DOTALL
+    r"\((.*)\)( *-> *[^:]+)? ?:", re.DOTALL
 )
 # Regex to match variables and return annotation
 # from first parenthesis after function name until colon
@@ -132,16 +132,16 @@ def _split_vars(input_str: str) -> list:
             str_count = 0 if str_count == 1 else 1
 
         if str_count == 0:
-            if char == ",":
+            if char == "(":
+                parent_count += 1
+            elif char == ")":
+                parent_count -= 1
+            elif char == ",":
                 if bracket_count == 0 and parent_count == 0:
                     output.append(input_str[last_read:i])
                     last_read = i + 1
-            elif char == "(":
-                parent_count += 1
             elif char == "[":
                 bracket_count += 1
-            elif char == ")":
-                parent_count -= 1
             elif char == "]":
                 bracket_count -= 1
 
@@ -219,12 +219,15 @@ def _has_annotation(var: str) -> bool:
     :return: bool
         Returns whether or not the variable has an annotation
     """
-    if var.strip() == "self" or var.strip() == "cls":
+    if var.strip() in ["self", "cls"]:
         return True
     return ":" in var
 
 
-def _get_file_info(path: str, **options: ty.Dict[ty.Any, ty.Union[str, bool]]) -> list:
+def _get_file_info(
+    path: str,
+    **options: ty.Dict[ty.Any, ty.Union[str, bool]]
+) -> list:
     """Checks for annotations for each function in a file given its path.
 
     :param path: str
@@ -242,12 +245,9 @@ def _get_file_info(path: str, **options: ty.Dict[ty.Any, ty.Union[str, bool]]) -
 
     _source_file = _file_text
 
-    if options["exclude_main"]:
-        if MAIN_RE.search(_file_text):
-            for f, l in _finditer_with_line_numbers(MAIN_RE, _source_file):
-                _main_line = l
-        else:
-            _main_line = None
+    if options["exclude_main"] and MAIN_RE.search(_file_text):
+        for f, l in _finditer_with_line_numbers(MAIN_RE, _source_file):
+            _main_line = l
     else:
         _main_line = None
 
@@ -267,20 +267,17 @@ def _get_file_info(path: str, **options: ty.Dict[ty.Any, ty.Union[str, bool]]) -
         match_var = None
 
     for func, _line_number in _finditer_with_line_numbers(FIND_FUNC_DEF_RE, _file_text):
-        if _main_line:
-            if _line_number >= _main_line:
-                return output_list
+        if _main_line and _line_number >= _main_line:
+            return output_list
 
         has_output = 0
         _func_name = func.group(1)
 
-        if match_func:
-            if not match_func.match(_func_name):
-                continue
+        if match_func and not match_func.match(_func_name):
+            continue
 
-        if options["exclude_dunder"]:
-            if _is_dunder(_func_name):
-                continue
+        if options["exclude_dunder"] and _is_dunder(_func_name):
+            continue
 
         _func_rest = _get_function_def(func.span()[1] - 1, _file_text)
         _func_rest_m = FUNC_INFO_RE.search(_func_rest)
@@ -298,41 +295,36 @@ def _get_file_info(path: str, **options: ty.Dict[ty.Any, ty.Union[str, bool]]) -
         ) + str(_line_number)
 
         for f_var in _func_vars:
-            if f_var:
-                if not _has_annotation(f_var):
-                    _var_name = VARIABLE_RE.search(f_var).group(1).strip()
+            if f_var and not _has_annotation(f_var):
+                _var_name = VARIABLE_RE.search(f_var).group(1).strip()
 
-                    if match_var:
-                        if not match_var.match(_var_name):
-                            continue
+                if match_var and not match_var.match(_var_name):
+                    continue
 
-                    if not options["include_asterisk"]:
-                        if _var_name.startswith("*"):
-                            continue
+                if not options["include_asterisk"] and _var_name.startswith("*"):
+                    continue
 
-                    output_list.append(
-                        f"{fo.MAGENTA}{_line_number}{s.RESET_ALL}:"
-                        f"Function {fo.BLUE}{_func_name}{s.RESET_ALL} is missing annotations for "
-                        f"argument {fo.MAGENTA}{_var_name}{s.RESET_ALL}."
-                    )
-                    has_output = 1
-
-        if not _func_return_ann and not options["exclude_return"]:
-            # if init_return - show return
-            # else: show if not
-            if options["init_return"]:
                 output_list.append(
                     f"{fo.MAGENTA}{_line_number}{s.RESET_ALL}:"
-                    f"Function {fo.BLUE}{_func_name}{s.RESET_ALL} is missing a return annotation."
+                    f"Function {fo.BLUE}{_func_name}{s.RESET_ALL} is missing annotations for "
+                    f"argument {fo.MAGENTA}{_var_name}{s.RESET_ALL}."
                 )
                 has_output = 1
-            else:
-                if not(_func_name == "__init__" and not _func_return_ann):
-                    output_list.append(
-                        f"{fo.MAGENTA}{_line_number}{s.RESET_ALL}:"
-                        f"Function {fo.BLUE}{_func_name}{s.RESET_ALL} is missing a return annotation."
-                    )
-                    has_output = 1
+
+        if (
+            not _func_return_ann
+            and not options["exclude_return"]
+            and (
+                not options["init_return"]
+                and _func_name != "__init__"
+                or options["init_return"]
+            )
+        ):
+            output_list.append(
+                f"{fo.MAGENTA}{_line_number}{s.RESET_ALL}:"
+                f"Function {fo.BLUE}{_func_name}{s.RESET_ALL} is missing a return annotation."
+            )
+            has_output = 1
 
         if options["new_line"] and has_output == 1:
             output_list.append("")
@@ -499,7 +491,7 @@ def main(src: click.Path, **options: ty.Dict[str, ty.Union[str, bool]]) -> None:
             print(f"The file '{src[0]}' aren't missing annotations")
 
     print(f"\nFound {fo.RED if count else fo.GREEN}{count}{s.RESET_ALL}", end=" ")
-    print(f"missing annotation(s) in", end=" ")
+    print("missing annotation(s) in", end=" ")
     print(
         f"{fo.BLUE}{file_count}{s.RESET_ALL} file{'' if file_count == 1 else 's'}.",
         end=" ",

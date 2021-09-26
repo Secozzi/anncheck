@@ -22,35 +22,26 @@ Usage: anncheck [OPTIONS] SRC...
 Options:
   -a, --include-asterisk    Include variables starting with '*'.  [default:
                             False]
-
   -c, --compact             Compact mode, displays file name and number of
                             missing annotations on a single line.  [default:
                             False]
-
   -d, --include-docstrings  Anncheck doesn't check for functions inside
                             triple-quotes by default, set flag to do.
                             [default: False]
-
   -e, --exclude-return      Exclude return annotations.  [default: False]
   -n, --new-line            Set flag to separate functions by an empty line.
                             [default: False]
-
   -r, --recursive           Set flag to recursively go into folders.
                             [default: False]
-
   -m, --exclude-main        Exclude functions defined in 'if __name__ ==
                             "__main__": ...'  [default: False]
-
   -p, --padding INTEGER     Padding for line number.  [default: 3]
   --exclude-dunder          Exclude dunder functions.  [default: False]
   --init-return             Set flag to show if __init__ is missing a return
                             annotation.  [default: False]
-
   --match-function TEXT     Only search functions matching regex. Note: Put
                             regex in quotes.
-
   --match-variable TEXT     Match variables with regex. Note: Put regex in
                             quotes.
-
   --help                    Show this message and exit.
 ```

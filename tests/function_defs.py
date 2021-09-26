@@ -44,6 +44,9 @@ def default_comma(a: int, b="te,st") -> None:
     # Comma inside default argument
     pass
 
+def space_after(a, b) :
+    pass
+
 def multiline(
         a: int, b: str,
         c,
@@ -139,14 +142,11 @@ class A:
         return False
 
     @classmethod
-    def classmetho(cls, a) -> int:
+    def classmethod(cls, a) -> int:
         pass
 
     @staticmethod
     def static(a, b) -> int: pass
-
-    #
-    #
 
     async def class_async(self):
         pass
